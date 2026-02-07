@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/app_export.dart';
+import '../../services/supabase_service.dart';
 import '../../widgets/custom_bottom_bar.dart';
 import '../../widgets/custom_icon_widget.dart';
 import './widgets/mood_emoji_button_widget.dart';
@@ -42,6 +43,20 @@ class _HomeScreenState extends State<HomeScreen> {
     _initializeScreen();
   }
 
+  /// Validate mood entry structure and data integrity
+  bool _isValidMoodEntry(dynamic item) {
+    if (item is! Map) return false;
+    if (!item.containsKey('date') || !item.containsKey('mood')) return false;
+    if (item['date'] is! String) return false;
+
+    // Accept both int and num (includes double) from JSON decoding
+    final moodValue = item['mood'];
+    if (moodValue is! num) return false;
+
+    final mood = moodValue.toInt();
+    return mood >= 1 && mood <= 5;
+  }
+
   /// Initialize screen by checking if mood is already logged today
   Future<void> _initializeScreen() async {
     final prefs = await SharedPreferences.getInstance();
@@ -64,49 +79,98 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Handle mood selection with haptic feedback and save to SharedPreferences
   Future<void> _onMoodSelected(int index) async {
-    if (_isMoodLogged) return;
-
-    // Haptic feedback
-    HapticFeedback.lightImpact();
-
     if (mounted) {
       setState(() {
         _selectedMoodIndex = index;
       });
     }
 
-    // Save mood to SharedPreferences
-    final prefs = await SharedPreferences.getInstance();
     final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
     final moodValue = _moodEmojis[index]['value'] as int;
 
+    // Save to Supabase first
+    try {
+      await SupabaseService.instance.saveMood(
+        date: today,
+        moodValue: moodValue,
+      );
+    } catch (e) {
+      // If Supabase fails, continue with local backup
+      debugPrint('Supabase save failed, using local backup: $e');
+    }
+
+    // Keep SharedPreferences as backup
+    final prefs = await SharedPreferences.getInstance();
     await prefs.setString('last_logged_date', today);
     await prefs.setInt('today_mood', moodValue);
 
-    // Get existing mood history and save as JSON with error handling
-    try {
-      final moodHistoryJson = prefs.getString('mood_history') ?? '[]';
-      final List<dynamic> moodHistory = json.decode(moodHistoryJson);
+    // Get existing mood history and save as JSON with robust error handling
+    List<Map<String, dynamic>> moodHistory = [];
 
-      // Check if today's mood already exists and update it, otherwise add new entry
-      final existingIndex = moodHistory.indexWhere(
-        (entry) => entry['date'] == today,
-      );
-      if (existingIndex != -1) {
-        moodHistory[existingIndex] = {'date': today, 'mood': moodValue};
-      } else {
-        moodHistory.add({'date': today, 'mood': moodValue});
+    try {
+      final moodHistoryJson = prefs.getString('mood_history');
+
+      if (moodHistoryJson != null && moodHistoryJson.isNotEmpty) {
+        final List<dynamic> parsedHistory = json.decode(moodHistoryJson);
+
+        // Convert to proper format with schema validation
+        moodHistory = parsedHistory
+            .where(_isValidMoodEntry)
+            .map(
+              (item) => {
+                'date': item['date'] as String,
+                // Ensure mood is stored as int, accepting num from JSON
+                'mood': (item['mood'] as num).toInt(),
+              },
+            )
+            .toList();
+      }
+    } catch (e) {
+      // Parsing failed - start with empty list
+      moodHistory = [];
+    }
+
+    // Check if today's mood already exists and update it, otherwise add new entry
+    final existingIndex = moodHistory.indexWhere(
+      (entry) => entry['date'] == today,
+    );
+
+    if (existingIndex != -1) {
+      moodHistory[existingIndex] = {'date': today, 'mood': moodValue};
+    } else {
+      moodHistory.add({'date': today, 'mood': moodValue});
+    }
+
+    // Save the updated history with backup mechanism
+    try {
+      // Create backup before write
+      final backupKey = 'mood_history_backup';
+      final currentData = prefs.getString('mood_history');
+      if (currentData != null) {
+        await prefs.setString(backupKey, currentData);
       }
 
-      await prefs.setString('mood_history', json.encode(moodHistory));
-    } catch (e) {
-      // If JSON parsing fails, create new history with current mood
+      // Attempt write with rollback capability
+      final encodedHistory = json.encode(moodHistory);
+      await prefs.setString('mood_history', encodedHistory);
+
+      // Secondary backup: Store individual mood entries as fallback
       await prefs.setString(
-        'mood_history',
-        json.encode([
-          {'date': today, 'mood': moodValue},
-        ]),
+        'mood_${today}',
+        json.encode({'date': today, 'mood': moodValue}),
       );
+    } catch (e) {
+      // Critical: encoding failed, restore from backup
+      final backupData = prefs.getString('mood_history_backup');
+      if (backupData != null) {
+        try {
+          await prefs.setString('mood_history', backupData);
+        } catch (_) {
+          // Backup restore failed - keep today's mood separately
+          await prefs.setString('last_logged_date', today);
+          await prefs.setInt('today_mood', moodValue);
+        }
+      }
     }
 
     // Show confirmation animation

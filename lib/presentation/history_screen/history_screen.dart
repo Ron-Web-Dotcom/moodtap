@@ -2,11 +2,13 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:intl/intl.dart';
 
 import '../../widgets/custom_bottom_bar.dart';
 import './widgets/monthly_view_widget.dart';
 import './widgets/mood_detail_sheet.dart';
 import './widgets/weekly_view_widget.dart';
+import '../../services/supabase_service.dart';
 
 /// History Screen - Displays mood tracking history with weekly and monthly views
 class HistoryScreen extends StatefulWidget {
@@ -33,20 +35,6 @@ class _HistoryScreenState extends State<HistoryScreen>
   }
 
   @override
-  void didUpdateWidget(HistoryScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // Reload data whenever widget rebuilds (e.g., when navigating back to this screen)
-    _loadMoodData();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Reload data when dependencies change (e.g., when screen becomes visible)
-    _loadMoodData();
-  }
-
-  @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _tabController.dispose();
@@ -55,13 +43,29 @@ class _HistoryScreenState extends State<HistoryScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Only reload on app resume - prevents excessive SharedPreferences reads
     if (state == AppLifecycleState.resumed) {
       _loadMoodData();
     }
   }
 
+  /// Validate mood entry structure and data integrity
+  bool _isValidMoodEntry(dynamic item) {
+    if (item is! Map) return false;
+    if (!item.containsKey('date') || !item.containsKey('mood')) return false;
+    if (item['date'] is! String) return false;
+
+    // Accept both int and num (includes double) from JSON decoding
+    final moodValue = item['mood'];
+    if (moodValue is! num) return false;
+
+    final mood = moodValue.toInt();
+    return mood >= 1 && mood <= 5;
+  }
+
   Future<void> _loadMoodData() async {
-    if (_isLoadingData) return; // Prevent concurrent loads
+    if (_isLoadingData || !mounted)
+      return; // Prevent concurrent loads and disposed widget access
     _isLoadingData = true;
 
     if (mounted) {
@@ -69,16 +73,37 @@ class _HistoryScreenState extends State<HistoryScreen>
     }
 
     try {
+      // Try loading from Supabase first
+      try {
+        final supabaseMoods = await SupabaseService.instance.loadMoods();
+
+        if (mounted) {
+          setState(() {
+            _allMoods = supabaseMoods
+                .where(_isValidMoodEntry)
+                .map(
+                  (item) => {
+                    'date': item['date'] as String,
+                    'mood': (item['mood'] as num).toInt(),
+                  },
+                )
+                .toList();
+            _isLoading = false;
+          });
+          _isLoadingData = false;
+          return;
+        }
+      } catch (e) {
+        debugPrint('Supabase load failed, falling back to local: $e');
+      }
+
+      // Fallback to SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       final moodsJson = prefs.getString('mood_history');
 
       if (moodsJson == null || moodsJson.isEmpty) {
-        if (mounted) {
-          setState(() {
-            _allMoods = [];
-            _isLoading = false;
-          });
-        }
+        // Try to recover from individual backup entries
+        await _recoverFromBackups(prefs);
         _isLoadingData = false;
         return;
       }
@@ -88,11 +113,14 @@ class _HistoryScreenState extends State<HistoryScreen>
 
         if (mounted) {
           setState(() {
+            // Apply schema validation to prevent corrupted data
             _allMoods = moodsList
+                .where(_isValidMoodEntry)
                 .map(
                   (item) => {
                     'date': item['date'] as String,
-                    'mood': item['mood'] as int,
+                    // Ensure mood is stored as int, accepting num from JSON
+                    'mood': (item['mood'] as num).toInt(),
                   },
                 )
                 .toList();
@@ -100,13 +128,8 @@ class _HistoryScreenState extends State<HistoryScreen>
           });
         }
       } catch (e) {
-        // JSON parsing failed - reset to empty list
-        if (mounted) {
-          setState(() {
-            _allMoods = [];
-            _isLoading = false;
-          });
-        }
+        // JSON parsing failed - try to recover from backups
+        await _recoverFromBackups(prefs);
       }
     } catch (e) {
       // Keep existing data if reload fails
@@ -118,20 +141,73 @@ class _HistoryScreenState extends State<HistoryScreen>
     }
   }
 
+  /// Recover mood data from individual backup entries
+  Future<void> _recoverFromBackups(SharedPreferences prefs) async {
+    final recoveredMoods = <Map<String, dynamic>>[];
+    final allKeys = prefs.getKeys();
+
+    // Look for individual mood backup entries (format: mood_yyyy-MM-dd)
+    for (final key in allKeys) {
+      if (key.startsWith('mood_') &&
+          key != 'mood_history' &&
+          key != 'mood_history_backup') {
+        try {
+          final moodJson = prefs.getString(key);
+          if (moodJson != null) {
+            final moodData = json.decode(moodJson);
+            if (_isValidMoodEntry(moodData)) {
+              recoveredMoods.add({
+                'date': moodData['date'] as String,
+                'mood': (moodData['mood'] as num).toInt(),
+              });
+            }
+          }
+        } catch (e) {
+          // Skip corrupted individual entries
+          continue;
+        }
+      }
+    }
+
+    // Sort by date
+    recoveredMoods.sort(
+      (a, b) => (a['date'] as String).compareTo(b['date'] as String),
+    );
+
+    // Restore main history from recovered data
+    if (recoveredMoods.isNotEmpty) {
+      try {
+        final encodedHistory = json.encode(recoveredMoods);
+        await prefs.setString('mood_history', encodedHistory);
+      } catch (e) {
+        // Encoding failed, keep in memory only
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _allMoods = recoveredMoods;
+        _isLoading = false;
+      });
+    }
+  }
+
   List<Map<String, dynamic>> _getWeeklyMoods() {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final startDate = today.subtract(const Duration(days: 6));
 
+    // Generate list of date strings for the last 7 days
+    final validDateStrings = List.generate(7, (index) {
+      final date = startDate.add(Duration(days: index));
+      return DateFormat('yyyy-MM-dd').format(date);
+    }).toSet();
+
     return _allMoods.where((mood) {
       try {
         final dateStr = mood['date'] as String;
-        final date = DateTime.parse(dateStr);
-        final normalizedDate = DateTime(date.year, date.month, date.day);
-
-        // Use compareTo for inclusive range check: startDate <= normalizedDate <= today
-        return normalizedDate.compareTo(startDate) >= 0 &&
-            normalizedDate.compareTo(today) <= 0;
+        // Direct string comparison against valid date range
+        return validDateStrings.contains(dateStr);
       } catch (e) {
         return false;
       }
@@ -146,9 +222,14 @@ class _HistoryScreenState extends State<HistoryScreen>
     return _allMoods.where((mood) {
       try {
         final dateStr = mood['date'] as String;
-        final date = DateTime.parse(dateStr);
+        // Parse date string and compare month/year
+        final parts = dateStr.split('-');
+        if (parts.length != 3) return false;
 
-        return date.month == currentMonth && date.year == currentYear;
+        final year = int.parse(parts[0]);
+        final month = int.parse(parts[1]);
+
+        return month == currentMonth && year == currentYear;
       } catch (e) {
         return false;
       }

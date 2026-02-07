@@ -42,6 +42,8 @@ class _MoodEmojiButtonWidgetState extends State<MoodEmojiButtonWidget>
 
   @override
   void dispose() {
+    _animationController
+        .stop(); // Stop animation before disposal to prevent memory leaks
     _animationController.dispose();
     super.dispose();
   }
@@ -73,48 +75,56 @@ class _MoodEmojiButtonWidgetState extends State<MoodEmojiButtonWidget>
     final theme = Theme.of(context);
     final isActive = widget.isSelected || (!widget.isDisabled && !_isPressed);
 
-    return GestureDetector(
-      onTapDown: _handleTapDown,
-      onTapUp: _handleTapUp,
-      onTapCancel: _handleTapCancel,
-      onTap: widget.isDisabled ? null : widget.onTap,
-      child: AnimatedBuilder(
-        animation: _scaleAnimation,
-        builder: (context, child) {
-          return Transform.scale(
-            scale: widget.isDisabled ? 1.0 : _scaleAnimation.value,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeInOut,
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: widget.isSelected
-                    ? theme.colorScheme.primary.withValues(alpha: 0.1)
-                    : widget.isDisabled
-                    ? theme.colorScheme.surface.withValues(alpha: 0.5)
-                    : theme.colorScheme.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
+    return Semantics(
+      label: '${widget.label} mood button',
+      button: true,
+      enabled: !widget.isDisabled,
+      selected: widget.isSelected,
+      child: GestureDetector(
+        onTapDown: _handleTapDown,
+        onTapUp: _handleTapUp,
+        onTapCancel: _handleTapCancel,
+        onTap: widget.isDisabled ? null : widget.onTap,
+        child: AnimatedBuilder(
+          animation: _scaleAnimation,
+          builder: (context, child) {
+            return Transform.scale(
+              scale: widget.isDisabled ? 1.0 : _scaleAnimation.value,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
                   color: widget.isSelected
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.outline.withValues(alpha: 0.2),
-                  width: widget.isSelected ? 2 : 1,
+                      ? (theme.colorScheme.primary.withValues(alpha: 0.1))
+                      : widget.isDisabled
+                      ? (theme.colorScheme.surface.withValues(alpha: 0.5))
+                      : theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: widget.isSelected
+                        ? theme.colorScheme.primary
+                        : (theme.colorScheme.outline.withValues(alpha: 0.2)),
+                    width: widget.isSelected ? 2 : 1,
+                  ),
                 ),
-              ),
-              child: Center(
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 200),
-                  opacity: widget.isDisabled && !widget.isSelected ? 0.3 : 1.0,
-                  child: Text(
-                    widget.emoji,
-                    style: const TextStyle(fontSize: 32),
+                child: Center(
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 200),
+                    opacity: widget.isDisabled && !widget.isSelected
+                        ? 0.3
+                        : 1.0,
+                    child: Text(
+                      widget.emoji,
+                      style: const TextStyle(fontSize: 32),
+                    ),
                   ),
                 ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }

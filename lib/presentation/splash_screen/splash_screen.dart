@@ -235,8 +235,13 @@ class _SplashScreenState extends State<SplashScreen>
               width: 2,
             ),
           ),
-          child: Center(
-            child: Text('😊', style: const TextStyle(fontSize: 64)),
+          child: ClipOval(
+            child: Image.asset(
+              'assets/images/ChatGPT_Image_Jan_31__2026__12_38_02_PM-1769881107516.png',
+              width: 100,
+              height: 100,
+              fit: BoxFit.cover,
+            ),
           ),
         ),
 

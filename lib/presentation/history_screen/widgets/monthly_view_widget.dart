@@ -36,34 +36,44 @@ class MonthlyViewWidget extends StatelessWidget {
     final now = DateTime.now();
     final firstDayOfMonth = DateTime(now.year, now.month, 1);
     final lastDayOfMonth = DateTime(now.year, now.month + 1, 0);
+    final daysInMonth = lastDayOfMonth.day;
 
-    // Group moods by week
-    final Map<int, List<Map<String, dynamic>>> weeklyGroups = {};
+    // Create a map of date -> mood value for quick lookup
+    final Map<String, int> moodMap = {};
     for (var mood in monthlyMoods) {
       try {
         final dateStr = mood['date'] as String;
-        final date = DateTime.parse(dateStr);
-        final weekNumber = ((date.day - 1) / 7).floor();
-        weeklyGroups.putIfAbsent(weekNumber, () => []);
-        weeklyGroups[weekNumber]!.add(mood);
+        final moodValue = mood['mood'] as int;
+        moodMap[dateStr] = moodValue;
       } catch (e) {
-        // Skip invalid date entries
+        // Skip invalid entries
       }
     }
 
-    // Calculate average mood per week
-    final List<double> weeklyAverages = [];
-    for (int i = 0; i < 5; i++) {
-      if (weeklyGroups.containsKey(i) && weeklyGroups[i]!.isNotEmpty) {
-        final avg =
-            weeklyGroups[i]!
-                .map((m) => m['mood'] as int)
-                .reduce((a, b) => a + b) /
-            weeklyGroups[i]!.length;
-        weeklyAverages.add(avg);
-      } else {
-        weeklyAverages.add(0);
-      }
+    // Generate bar data for each day of the month
+    final List<BarChartGroupData> barGroups = [];
+    for (int day = 1; day <= daysInMonth; day++) {
+      final date = DateTime(now.year, now.month, day);
+      final dateStr = DateFormat('yyyy-MM-dd').format(date);
+      final moodValue = moodMap[dateStr] ?? 0;
+
+      barGroups.add(
+        BarChartGroupData(
+          x: day - 1,
+          barRods: [
+            BarChartRodData(
+              toY: moodValue > 0 ? moodValue.toDouble() : 0,
+              color: moodValue > 0
+                  ? _getMoodColor(moodValue)
+                  : theme.colorScheme.outline.withValues(alpha: 0.1),
+              width: daysInMonth > 28 ? 8 : 10,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(4),
+              ),
+            ),
+          ],
+        ),
+      );
     }
 
     return Container(
@@ -99,15 +109,22 @@ class MonthlyViewWidget extends StatelessWidget {
                       enabled: true,
                       touchTooltipData: BarTouchTooltipData(
                         getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                          final day = group.x.toInt() + 1;
+                          final date = DateTime(now.year, now.month, day);
+                          final dateStr = DateFormat('MMM d').format(date);
+                          final moodValue = rod.toY.toInt();
+
+                          if (moodValue == 0) return null;
+
                           return BarTooltipItem(
-                            'Week ${group.x + 1}\n',
+                            '$dateStr\n',
                             theme.textTheme.labelMedium!.copyWith(
                               color: Colors.white,
                               fontWeight: FontWeight.w600,
                             ),
                             children: [
                               TextSpan(
-                                text: 'Avg: ${rod.toY.toStringAsFixed(1)}',
+                                text: 'Mood: $moodValue',
                                 style: theme.textTheme.labelSmall!.copyWith(
                                   color: Colors.white70,
                                 ),
@@ -122,16 +139,21 @@ class MonthlyViewWidget extends StatelessWidget {
                       bottomTitles: AxisTitles(
                         sideTitles: SideTitles(
                           showTitles: true,
+                          interval: daysInMonth > 28 ? 5 : 3,
                           getTitlesWidget: (value, meta) {
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Text(
-                                'W${value.toInt() + 1}',
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
+                            final day = value.toInt() + 1;
+                            if (day == 1 || day == 15 || day == daysInMonth) {
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(
+                                  day.toString(),
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
                                 ),
-                              ),
-                            );
+                              );
+                            }
+                            return const SizedBox.shrink();
                           },
                         ),
                       ),
@@ -173,26 +195,7 @@ class MonthlyViewWidget extends StatelessWidget {
                       },
                     ),
                     borderData: FlBorderData(show: false),
-                    barGroups: List.generate(
-                      weeklyAverages.length,
-                      (index) => BarChartGroupData(
-                        x: index,
-                        barRods: [
-                          BarChartRodData(
-                            toY: weeklyAverages[index],
-                            color: weeklyAverages[index] > 0
-                                ? _getMoodColor(weeklyAverages[index].round())
-                                : theme.colorScheme.outline.withValues(
-                                    alpha: 0.2,
-                                  ),
-                            width: 32,
-                            borderRadius: const BorderRadius.vertical(
-                              top: Radius.circular(8),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    barGroups: barGroups,
                   ),
                 ),
               ),

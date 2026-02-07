@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/app_export.dart';
+import '../../main.dart';
 import '../../routes/app_routes.dart';
 import '../../services/notification_service.dart';
+import '../../services/supabase_service.dart';
 import '../../widgets/custom_bottom_bar.dart';
 import '../../widgets/custom_icon_widget.dart';
 import './widgets/reset_data_dialog_widget.dart';
@@ -74,16 +77,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// Show permission denied dialog with guidance
+  Future<void> _showPermissionDeniedDialog() async {
+    if (!mounted) return;
+
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Notification Permission Required'),
+        content: const Text(
+          'MoodTap needs notification permission to send you daily reminders. '
+          'Please enable notifications in your device settings to use this feature.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              openAppSettings();
+            },
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// Toggle notifications on/off
   Future<void> _toggleNotifications(bool value) async {
     try {
       final notificationService = NotificationService();
 
       if (value) {
-        // Request permissions first
+        // Check if permission is permanently denied first
+        final isPermanentlyDenied = await notificationService
+            .isPermissionPermanentlyDenied();
+
+        if (isPermanentlyDenied) {
+          // Show guidance dialog
+          await _showPermissionDeniedDialog();
+          return;
+        }
+
+        // Request permissions
         final hasPermission = await notificationService.requestPermissions();
         if (!hasPermission) {
-          // Permission denied
+          // Permission denied - show guidance
+          await _showPermissionDeniedDialog();
           return;
         }
 
@@ -140,14 +183,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('isDarkMode', value);
+
       if (mounted) {
         setState(() {
           _isDarkMode = value;
         });
-      }
 
-      // Update theme without restarting the app - removing invalid type reference
-      // Theme update will require app restart or proper state management implementation
+        // Update theme immediately by accessing root MyApp state
+        final myAppState = context
+            .findRootAncestorStateOfType<State<StatefulWidget>>();
+        if (myAppState != null) {
+          // Access the updateThemeMode method from _MyAppState
+          final dynamic appState = myAppState;
+          if (appState.runtimeType.toString() == '_MyAppState') {
+            try {
+              (appState as dynamic).updateThemeMode(value);
+            } catch (e) {
+              // Silent fail - theme will update on next app restart
+            }
+          }
+        }
+      }
     } catch (e) {
       // Silent fail - theme preference saved but visual update failed
     }
@@ -168,6 +224,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// Reset all mood data and navigate to splash screen
   Future<void> _resetAllData() async {
     try {
+      // Clear Supabase data first
+      try {
+        await SupabaseService.instance.deleteAllMoods();
+      } catch (e) {
+        debugPrint('Failed to clear Supabase data: $e');
+      }
+
+      // Clear local SharedPreferences
       final prefs = await SharedPreferences.getInstance();
       // Clear all mood-related data but keep theme preference
       final isDarkMode = prefs.getBool('isDarkMode') ?? false;

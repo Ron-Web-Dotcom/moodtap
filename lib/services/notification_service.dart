@@ -52,13 +52,14 @@ class NotificationService {
   }
 
   /// Request notification permissions (required for Android 13+ and iOS)
-  /// Returns false if permanently denied and opens app settings
+  /// Returns true if granted, false if denied
+  /// Shows guidance dialog if permanently denied
   Future<bool> requestPermissions() async {
     final status = await Permission.notification.request();
 
     if (status.isPermanentlyDenied) {
-      // Guide user to app settings to enable permissions
-      await openAppSettings();
+      // Permission permanently denied - user must enable in settings
+      // Return false to let caller show guidance dialog
       return false;
     }
 
@@ -69,6 +70,12 @@ class NotificationService {
   Future<bool> hasPermissions() async {
     final status = await Permission.notification.status;
     return status.isGranted;
+  }
+
+  /// Check if permissions are permanently denied
+  Future<bool> isPermissionPermanentlyDenied() async {
+    final status = await Permission.notification.status;
+    return status.isPermanentlyDenied;
   }
 
   /// Schedule daily notification at specified time
