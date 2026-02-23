@@ -95,6 +95,15 @@ class _HistoryScreenState extends State<HistoryScreen>
         }
       } catch (e) {
         debugPrint('Supabase load failed, falling back to local: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Loading from local storage'),
+              backgroundColor: Theme.of(context).colorScheme.secondary,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
       }
 
       // Fallback to SharedPreferences
@@ -135,6 +144,12 @@ class _HistoryScreenState extends State<HistoryScreen>
       // Keep existing data if reload fails
       if (mounted) {
         setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to load mood data. Please try again.'),
+            duration: Duration(seconds: 2),
+          ),
+        );
       }
     } finally {
       _isLoadingData = false;

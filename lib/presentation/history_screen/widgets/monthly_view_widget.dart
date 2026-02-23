@@ -30,6 +30,44 @@ class MonthlyViewWidget extends StatelessWidget {
     }
   }
 
+  String _getMoodLabel(int moodValue) {
+    switch (moodValue) {
+      case 1:
+        return 'Very sad';
+      case 2:
+        return 'Sad';
+      case 3:
+        return 'Neutral';
+      case 4:
+        return 'Happy';
+      case 5:
+        return 'Very happy';
+      default:
+        return 'Unknown';
+    }
+  }
+
+  String _generateChartAccessibilityLabel() {
+    if (monthlyMoods.isEmpty) {
+      return 'Monthly mood chart. No mood entries for this month.';
+    }
+
+    final moodCounts = <int, int>{};
+    for (var mood in monthlyMoods) {
+      final value = mood['mood'] as int;
+      moodCounts[value] = (moodCounts[value] ?? 0) + 1;
+    }
+
+    final description = StringBuffer(
+      'Monthly mood chart with ${monthlyMoods.length} entries. ',
+    );
+    moodCounts.forEach((mood, count) {
+      description.write('$count ${_getMoodLabel(mood)} days. ');
+    });
+
+    return description.toString();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -99,7 +137,8 @@ class MonthlyViewWidget extends StatelessWidget {
             SizedBox(
               height: 280,
               child: Semantics(
-                label: 'Monthly Mood Bar Chart',
+                label: _generateChartAccessibilityLabel(),
+                hint: 'Swipe to explore individual days',
                 child: BarChart(
                   BarChartData(
                     alignment: BarChartAlignment.spaceAround,
@@ -205,7 +244,10 @@ class MonthlyViewWidget extends StatelessWidget {
               child: Column(
                 children: [
                   const SizedBox(height: 40),
-                  Text('📈', style: const TextStyle(fontSize: 64)),
+                  Semantics(
+                    label: 'No mood entries',
+                    child: Text('📈', style: const TextStyle(fontSize: 64)),
+                  ),
                   const SizedBox(height: 16),
                   Text(
                     'No mood entries this month',

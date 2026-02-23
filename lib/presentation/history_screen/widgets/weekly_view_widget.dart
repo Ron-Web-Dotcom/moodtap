@@ -64,6 +64,27 @@ class WeeklyViewWidget extends StatelessWidget {
     }
   }
 
+  String _generateChartAccessibilityLabel() {
+    if (weeklyMoods.isEmpty) {
+      return 'Weekly mood chart. No mood entries for the past 7 days.';
+    }
+
+    final moodCounts = <int, int>{};
+    for (var mood in weeklyMoods) {
+      final value = mood['mood'] as int;
+      moodCounts[value] = (moodCounts[value] ?? 0) + 1;
+    }
+
+    final description = StringBuffer(
+      'Weekly mood chart with ${weeklyMoods.length} entries. ',
+    );
+    moodCounts.forEach((mood, count) {
+      description.write('$count ${_getMoodLabel(mood)} days. ');
+    });
+
+    return description.toString();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -143,7 +164,8 @@ class WeeklyViewWidget extends StatelessWidget {
             SizedBox(
               height: 280,
               child: Semantics(
-                label: 'Weekly Mood Bar Chart',
+                label: _generateChartAccessibilityLabel(),
+                hint: 'Swipe to explore individual days',
                 child: BarChart(
                   BarChartData(
                     alignment: BarChartAlignment.spaceAround,

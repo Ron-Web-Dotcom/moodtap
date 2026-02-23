@@ -1,5 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:math';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
 class SupabaseService {
   static SupabaseService? _instance;
@@ -17,6 +19,11 @@ class SupabaseService {
   );
 
   String? _deviceUserId;
+
+  // Cache for mood data to reduce API calls
+  List<Map<String, dynamic>>? _cachedMoods;
+  DateTime? _cacheTimestamp;
+  static const _cacheDuration = Duration(minutes: 5);
 
   // Initialize Supabase - call this in main()
   static Future<void> initialize() async {
@@ -53,37 +60,91 @@ class SupabaseService {
     }
   }
 
-  // Generate UUID v4
+  // Generate UUID v4 with cryptographically secure random
   String _generateUuid() {
-    final random = DateTime.now().microsecondsSinceEpoch;
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replaceAllMapped(
-      RegExp(r'[xy]'),
-      (match) {
-        final r = (random + (random * 16).toInt()) % 16;
-        final v = match.group(0) == 'x' ? r : (r & 0x3 | 0x8);
-        return v.toRadixString(16);
-      },
-    );
+    final random = Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+
+    // Set version to 4
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    // Set variant to RFC 4122
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+    return [
+          bytes.sublist(0, 4),
+          bytes.sublist(4, 6),
+          bytes.sublist(6, 8),
+          bytes.sublist(8, 10),
+          bytes.sublist(10, 16),
+        ]
+        .map(
+          (part) => part.map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
+        )
+        .join('-');
   }
 
-  // Save or update mood for a specific date
-  Future<void> saveMood({required String date, required int moodValue}) async {
-    try {
-      final userId = await getAnonymousUserId();
+  // Save or update mood with retry mechanism
+  Future<void> saveMood({
+    required String date,
+    required int moodValue,
+    int maxRetries = 3,
+  }) async {
+    int attempt = 0;
+    Exception? lastException;
 
-      // Upsert: insert or update if exists
-      await client.from('moods').upsert({
-        'user_id': userId,
-        'mood_date': date,
-        'mood_value': moodValue,
-      }, onConflict: 'user_id,mood_date');
-    } catch (e) {
-      throw Exception('Failed to save mood: $e');
+    while (attempt < maxRetries) {
+      try {
+        final userId = await getAnonymousUserId();
+
+        // Upsert: insert or update if exists
+        await client.from('moods').upsert({
+          'user_id': userId,
+          'mood_date': date,
+          'mood_value': moodValue,
+        }, onConflict: 'user_id,mood_date');
+
+        // Clear cache after successful save
+        _cachedMoods = null;
+        _cacheTimestamp = null;
+
+        return; // Success
+      } catch (e) {
+        lastException = Exception('Failed to save mood: $e');
+        attempt++;
+
+        if (attempt < maxRetries) {
+          // Exponential backoff: 1s, 2s, 4s
+          await Future.delayed(Duration(seconds: pow(2, attempt - 1).toInt()));
+        } else {
+          // Report to Sentry after all retries failed
+          await Sentry.captureException(
+            lastException,
+            hint: Hint.withMap({
+              'context': 'saveMood',
+              'date': date,
+              'moodValue': moodValue,
+              'attempts': attempt,
+            }),
+          );
+        }
+      }
     }
+
+    throw lastException!;
   }
 
-  // Load all moods for current user
-  Future<List<Map<String, dynamic>>> loadMoods() async {
+  // Load all moods with caching
+  Future<List<Map<String, dynamic>>> loadMoods({
+    bool forceRefresh = false,
+  }) async {
+    // Return cached data if valid and not forcing refresh
+    if (!forceRefresh && _cachedMoods != null && _cacheTimestamp != null) {
+      final cacheAge = DateTime.now().difference(_cacheTimestamp!);
+      if (cacheAge < _cacheDuration) {
+        return _cachedMoods!;
+      }
+    }
+
     try {
       final userId = await getAnonymousUserId();
 
@@ -94,7 +155,7 @@ class SupabaseService {
           .order('mood_date', ascending: false);
 
       // Convert to format expected by app: {date: 'yyyy-MM-dd', mood: int}
-      return (data as List)
+      final moods = (data as List)
           .map(
             (row) => {
               'date': row['mood_date'] as String,
@@ -102,7 +163,17 @@ class SupabaseService {
             },
           )
           .toList();
+
+      // Update cache
+      _cachedMoods = moods;
+      _cacheTimestamp = DateTime.now();
+
+      return moods;
     } catch (e) {
+      await Sentry.captureException(
+        e,
+        hint: Hint.withMap({'context': 'loadMoods'}),
+      );
       throw Exception('Failed to load moods: $e');
     }
   }
@@ -113,7 +184,15 @@ class SupabaseService {
       final userId = await getAnonymousUserId();
 
       await client.from('moods').delete().eq('user_id', userId);
+
+      // Clear cache
+      _cachedMoods = null;
+      _cacheTimestamp = null;
     } catch (e) {
+      await Sentry.captureException(
+        e,
+        hint: Hint.withMap({'context': 'deleteAllMoods'}),
+      );
       throw Exception('Failed to delete moods: $e');
     }
   }
@@ -134,6 +213,17 @@ class SupabaseService {
     } catch (e) {
       return null;
     }
+  }
+
+  // Get all moods (alias for loadMoods for backward compatibility)
+  Future<List<Map<String, dynamic>>> getAllMoods() async {
+    return loadMoods();
+  }
+
+  // Clear cache manually
+  void clearCache() {
+    _cachedMoods = null;
+    _cacheTimestamp = null;
   }
 
   // Migrate local SharedPreferences data to Supabase (one-time operation)
@@ -160,7 +250,18 @@ class SupabaseService {
       await client
           .from('moods')
           .upsert(moodsToInsert, onConflict: 'user_id,mood_date');
+
+      // Clear cache to force reload
+      _cachedMoods = null;
+      _cacheTimestamp = null;
     } catch (e) {
+      await Sentry.captureException(
+        e,
+        hint: Hint.withMap({
+          'context': 'migrateLocalDataToSupabase',
+          'moodCount': localMoods.length,
+        }),
+      );
       throw Exception('Failed to migrate local data: $e');
     }
   }

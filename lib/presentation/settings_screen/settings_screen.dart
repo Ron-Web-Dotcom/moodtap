@@ -1,14 +1,14 @@
+
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sizer/sizer.dart';
 
 import '../../core/app_export.dart';
-import '../../main.dart';
 import '../../routes/app_routes.dart';
 import '../../services/notification_service.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/custom_bottom_bar.dart';
-import '../../widgets/custom_icon_widget.dart';
 import './widgets/reset_data_dialog_widget.dart';
 import './widgets/settings_section_widget.dart';
 
@@ -247,391 +247,313 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       }
     } catch (e) {
-      // Silent fail - show error in production
+      debugPrint('Failed to reset data: $e');
+    }
+  }
+
+  /// Export mood data as CSV
+  Future<void> _exportData() async {
+    try {
+      final moods = await SupabaseService.instance.getAllMoods();
+
+      if (moods.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No mood data to export'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Create CSV content
+      final csvContent = StringBuffer();
+      csvContent.writeln('Date,Mood,Mood Label');
+
+      for (final mood in moods) {
+        final date = mood['date'] as String;
+        final moodValue = mood['mood'] as int;
+        final moodLabel = _getMoodLabel(moodValue);
+        csvContent.writeln('$date,$moodValue,$moodLabel');
+      }
+
+      // Show success message with data preview
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Data Export Ready'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Your mood data (${moods.length} entries) is ready to export.',
+                  ),
+                  SizedBox(height: 2.h),
+                  Text(
+                    'Preview:',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13.sp,
+                    ),
+                  ),
+                  SizedBox(height: 1.h),
+                  Container(
+                    padding: EdgeInsets.all(2.w),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).cardColor,
+                      borderRadius: BorderRadius.circular(8.0),
+                    ),
+                    child: Text(
+                      csvContent.toString().split('\n').take(5).join('\n'),
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 11.sp,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to export data: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  String _getMoodLabel(int mood) {
+    switch (mood) {
+      case 1:
+        return 'Very Bad';
+      case 2:
+        return 'Bad';
+      case 3:
+        return 'Okay';
+      case 4:
+        return 'Good';
+      case 5:
+        return 'Great';
+      default:
+        return 'Unknown';
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     if (_isLoading) {
-      return Scaffold(
-        backgroundColor: theme.scaffoldBackgroundColor,
-        body: Center(
-          child: CircularProgressIndicator(color: theme.colorScheme.primary),
-        ),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: theme.appBarTheme.backgroundColor,
+        title: const Text('Settings'),
+        automaticallyImplyLeading: false,
         elevation: 0,
-        centerTitle: true,
-        title: Text(
-          'Settings',
-          style: theme.textTheme.titleLarge?.copyWith(
-            color: theme.colorScheme.onSurface,
-          ),
-        ),
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      body: SingleChildScrollView(
+        padding: EdgeInsets.all(4.w),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Appearance Section
+            SettingsSectionWidget(
+              title: 'Appearance',
               children: [
-                // Appearance Section
-                SettingsSectionWidget(
-                  title: 'Appearance',
-                  children: [_buildDarkModeToggle(theme)],
-                ),
-                const SizedBox(height: 24),
-
-                // Notifications Section
-                SettingsSectionWidget(
-                  title: 'Notifications',
-                  children: [
-                    _buildNotificationToggle(theme),
-                    if (_notificationsEnabled) ...[
-                      const SizedBox(height: 12),
-                      _buildNotificationTimePicker(theme),
-                    ],
-                  ],
-                ),
-                const SizedBox(height: 24),
-
-                // Data Management Section
-                SettingsSectionWidget(
-                  title: 'Data Management',
-                  children: [_buildResetDataButton(theme)],
-                ),
-                const SizedBox(height: 24),
-
-                // About Section
-                SettingsSectionWidget(
-                  title: 'About',
-                  children: [_buildAboutInfo(theme)],
+                ListTile(
+                  leading: Icon(
+                    _isDarkMode ? Icons.dark_mode : Icons.light_mode,
+                    color: Theme.of(context).primaryColor,
+                  ),
+                  title: const Text('Dark Mode'),
+                  subtitle: Text(
+                    _isDarkMode ? 'Enabled' : 'Disabled',
+                    style: TextStyle(fontSize: 12.sp, color: Colors.grey),
+                  ),
+                  trailing: Switch(
+                    value: _isDarkMode,
+                    onChanged: _toggleDarkMode,
+                  ),
                 ),
               ],
             ),
-          ),
+            SizedBox(height: 2.h),
+
+            // Notifications Section
+            SettingsSectionWidget(
+              title: 'Notifications',
+              children: [
+                ListTile(
+                  leading: Icon(
+                    Icons.notifications,
+                    color: Theme.of(context).primaryColor,
+                  ),
+                  title: const Text('Daily Reminder'),
+                  subtitle: Text(
+                    _notificationsEnabled
+                        ? 'Enabled at ${_notificationTime.format(context)}'
+                        : 'Disabled',
+                    style: TextStyle(fontSize: 12.sp, color: Colors.grey),
+                  ),
+                  trailing: Switch(
+                    value: _notificationsEnabled,
+                    onChanged: _toggleNotifications,
+                  ),
+                ),
+                if (_notificationsEnabled)
+                  ListTile(
+                    leading: Icon(
+                      Icons.access_time,
+                      color: Theme.of(context).primaryColor,
+                    ),
+                    title: const Text('Reminder Time'),
+                    subtitle: Text(
+                      _notificationTime.format(context),
+                      style: TextStyle(fontSize: 12.sp, color: Colors.grey),
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: _selectNotificationTime,
+                  ),
+              ],
+            ),
+            SizedBox(height: 2.h),
+
+            // Data Management Section
+            SettingsSectionWidget(
+              title: 'Data Management',
+              children: [
+                ListTile(
+                  leading: Icon(
+                    Icons.download,
+                    color: Theme.of(context).primaryColor,
+                  ),
+                  title: const Text('Export Data'),
+                  subtitle: Text(
+                    'Download your mood history as CSV',
+                    style: TextStyle(fontSize: 12.sp, color: Colors.grey),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _exportData,
+                ),
+                ListTile(
+                  leading: const Icon(Icons.delete_forever, color: Colors.red),
+                  title: const Text(
+                    'Reset All Data',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                  subtitle: Text(
+                    'Permanently delete all mood entries',
+                    style: TextStyle(fontSize: 12.sp, color: Colors.grey),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _showResetDialog,
+                ),
+              ],
+            ),
+            SizedBox(height: 2.h),
+
+            // Legal Section
+            SettingsSectionWidget(
+              title: 'Legal',
+              children: [
+                ListTile(
+                  leading: Icon(
+                    Icons.privacy_tip,
+                    color: Theme.of(context).primaryColor,
+                  ),
+                  title: const Text('Privacy Policy'),
+                  subtitle: Text(
+                    'How we handle your data',
+                    style: TextStyle(fontSize: 12.sp, color: Colors.grey),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.pushNamed(context, AppRoutes.privacyPolicy);
+                  },
+                ),
+                ListTile(
+                  leading: Icon(
+                    Icons.description,
+                    color: Theme.of(context).primaryColor,
+                  ),
+                  title: const Text('Terms of Service'),
+                  subtitle: Text(
+                    'Terms and conditions',
+                    style: TextStyle(fontSize: 12.sp, color: Colors.grey),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.pushNamed(context, AppRoutes.termsOfService);
+                  },
+                ),
+              ],
+            ),
+            SizedBox(height: 2.h),
+
+            // App Info
+            Center(
+              child: Column(
+                children: [
+                  Text(
+                    'MoodTap',
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey,
+                    ),
+                  ),
+                  SizedBox(height: 0.5.h),
+                  Text(
+                    'Version 1.0.0',
+                    style: TextStyle(fontSize: 12.sp, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 2.h),
+          ],
         ),
       ),
       bottomNavigationBar: CustomBottomBar(
         currentIndex: _currentIndex,
         onTap: (index) {
+          if (index == _currentIndex) return;
+
           setState(() {
             _currentIndex = index;
           });
+
+          switch (index) {
+            case 0:
+              Navigator.pushReplacementNamed(context, AppRoutes.home);
+              break;
+            case 1:
+              Navigator.pushReplacementNamed(context, AppRoutes.history);
+              break;
+            case 2:
+              // Already on settings
+              break;
+          }
         },
       ),
-    );
-  }
-
-  /// Build notification toggle switch
-  Widget _buildNotificationToggle(ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: CustomIconWidget(
-              iconName: 'notifications',
-              color: theme.colorScheme.primary,
-              size: 24,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Daily Reminder',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    color: theme.colorScheme.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _notificationsEnabled ? 'Enabled' : 'Disabled',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Switch(
-            value: _notificationsEnabled,
-            onChanged: _toggleNotifications,
-            activeThumbColor: theme.colorScheme.primary,
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Build notification time picker
-  Widget _buildNotificationTimePicker(ThemeData theme) {
-    return InkWell(
-      onTap: _selectNotificationTime,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: CustomIconWidget(
-                iconName: 'schedule',
-                color: theme.colorScheme.primary,
-                size: 24,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Reminder Time',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: theme.colorScheme.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _notificationTime.format(context),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              Icons.chevron_right,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Build dark mode toggle switch
-  Widget _buildDarkModeToggle(ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: CustomIconWidget(
-              iconName: _isDarkMode ? 'dark_mode' : 'light_mode',
-              color: theme.colorScheme.primary,
-              size: 24,
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Dark Mode',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    color: theme.colorScheme.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _isDarkMode ? 'Enabled' : 'Disabled',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Switch(
-            value: _isDarkMode,
-            onChanged: _toggleDarkMode,
-            activeThumbColor: theme.colorScheme.primary,
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Build reset data button
-  Widget _buildResetDataButton(ThemeData theme) {
-    return InkWell(
-      onTap: _showResetDialog,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.error.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: CustomIconWidget(
-                iconName: 'warning',
-                color: theme.colorScheme.error,
-                size: 24,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Reset Data',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: theme.colorScheme.error,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Delete all mood history',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            CustomIconWidget(
-              iconName: 'chevron_right',
-              color: theme.colorScheme.onSurfaceVariant,
-              size: 20,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Build about information section
-  Widget _buildAboutInfo(ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              CustomIconWidget(
-                iconName: 'info',
-                color: theme.colorScheme.primary,
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'App Information',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: theme.colorScheme.onSurface,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildInfoRow(theme, 'Version', '1.0.0'),
-          const SizedBox(height: 12),
-          _buildInfoRow(theme, 'Build', '2026.01.03'),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                CustomIconWidget(
-                  iconName: 'lock',
-                  color: theme.colorScheme.primary,
-                  size: 16,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Your mood data is stored locally on your device and never shared',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurface,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Build information row
-  Widget _buildInfoRow(ThemeData theme, String label, String value) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        Text(
-          value,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurface,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
     );
   }
 }

@@ -89,14 +89,25 @@ class _HomeScreenState extends State<HomeScreen> {
     final moodValue = _moodEmojis[index]['value'] as int;
 
     // Save to Supabase first
+    bool supabaseSaveSuccess = false;
     try {
       await SupabaseService.instance.saveMood(
         date: today,
         moodValue: moodValue,
       );
+      supabaseSaveSuccess = true;
     } catch (e) {
-      // If Supabase fails, continue with local backup
       debugPrint('Supabase save failed, using local backup: $e');
+      // Show user-friendly error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Saved locally. Will sync when online.'),
+            backgroundColor: Theme.of(context).colorScheme.secondary,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     }
 
     // Keep SharedPreferences as backup
@@ -184,6 +195,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // Show success feedback
     HapticFeedback.mediumImpact();
+
+    if (mounted && supabaseSaveSuccess) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Mood saved successfully!'),
+          backgroundColor: Theme.of(context).colorScheme.primary,
+          duration: const Duration(seconds: 1),
+        ),
+      );
+    }
   }
 
   @override
@@ -245,7 +266,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         if (_isMoodLogged)
                           _buildCompletionMessage(theme)
                         else
-                          const MotivationalTextWidget(),
+                          MotivationalTextWidget(
+                            text: 'Take a moment to reflect on your feelings.',
+                            isMoodLogged: _isMoodLogged,
+                          ),
                       ],
                     ),
                   ),

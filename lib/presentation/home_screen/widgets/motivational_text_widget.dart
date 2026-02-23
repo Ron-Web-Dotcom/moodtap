@@ -1,47 +1,45 @@
 import 'package:flutter/material.dart';
 
-/// Displays motivational text to encourage consistent mood tracking
+/// Widget displaying motivational text with accessibility support
 class MotivationalTextWidget extends StatelessWidget {
-  const MotivationalTextWidget({super.key});
+  final String text;
+  final bool isMoodLogged;
+
+  const MotivationalTextWidget({
+    super.key,
+    required this.text,
+    required this.isMoodLogged,
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.3),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.colorScheme.outline.withValues(alpha: 0.1),
+    return Semantics(
+      label: isMoodLogged
+          ? 'Mood logged successfully. $text'
+          : 'Motivational message: $text',
+      readOnly: true,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: theme.colorScheme.primary.withValues(alpha: 0.2),
+            width: 1,
+          ),
         ),
-      ),
-      child: Column(
-        children: [
-          Icon(
-            Icons.lightbulb_outline,
-            color: theme.colorScheme.secondary,
-            size: 32,
+        child: Text(
+          text,
+          style: theme.textTheme.bodyLarge?.copyWith(
+            color: theme.colorScheme.onSurface,
+            fontWeight: FontWeight.w500,
+            height: 1.5,
           ),
-          const SizedBox(height: 12),
-          Text(
-            'Track your mood daily',
-            style: theme.textTheme.titleMedium?.copyWith(
-              color: theme.colorScheme.onSurface,
-              fontWeight: FontWeight.w600,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Understanding your emotions is the first step to better mental wellness. Take a moment to reflect on how you feel today.',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
+          textAlign: TextAlign.center,
+        ),
       ),
     );
   }

@@ -76,10 +76,14 @@ class _MoodEmojiButtonWidgetState extends State<MoodEmojiButtonWidget>
     final isActive = widget.isSelected || (!widget.isDisabled && !_isPressed);
 
     return Semantics(
-      label: '${widget.label} mood button',
+      label: '${widget.label} mood. ${widget.emoji}',
+      hint: widget.isDisabled
+          ? 'Already selected for today'
+          : 'Double tap to select ${widget.label} mood',
       button: true,
       enabled: !widget.isDisabled,
       selected: widget.isSelected,
+      onTap: widget.isDisabled ? null : widget.onTap,
       child: GestureDetector(
         onTapDown: _handleTapDown,
         onTapUp: _handleTapUp,
@@ -118,6 +122,7 @@ class _MoodEmojiButtonWidgetState extends State<MoodEmojiButtonWidget>
                     child: Text(
                       widget.emoji,
                       style: const TextStyle(fontSize: 32),
+                      semanticsLabel: widget.label,
                     ),
                   ),
                 ),

@@ -1,0 +1,29 @@
+# Android Keystore Configuration
+# 
+# INSTRUCTIONS FOR PRODUCTION RELEASE:
+# 
+# 1. Generate a keystore file (one-time setup):
+#    keytool -genkey -v -keystore ~/moodtap-release-key.jks -keyalg RSA -keysize 2048 -validity 10000 -alias moodtap
+#
+# 2. Create this file: android/key.properties
+#
+# 3. Add the following content (replace with your actual values):
+#    storePassword=YOUR_KEYSTORE_PASSWORD
+#    keyPassword=YOUR_KEY_PASSWORD
+#    keyAlias=moodtap
+#    storeFile=/path/to/your/moodtap-release-key.jks
+#
+# 4. Add key.properties to .gitignore to keep credentials secure
+#
+# 5. Build release APK/AAB:
+#    flutter build apk --release
+#    flutter build appbundle --release
+#
+# IMPORTANT: Keep your keystore file and passwords secure!
+# If you lose the keystore, you cannot update your app on Google Play.
+
+# Example configuration (DO NOT USE THESE VALUES):
+# storePassword=example_store_password
+# keyPassword=example_key_password
+# keyAlias=moodtap
+# storeFile=/Users/yourname/moodtap-release-key.jks
