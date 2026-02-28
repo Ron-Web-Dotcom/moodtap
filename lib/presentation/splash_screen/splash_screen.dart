@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Splash screen with branded launch experience and mood tracking initialization
-/// Displays app logo with animation, checks user data, and navigates appropriately
+/// Modern splash screen with premium gradient design
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -15,8 +15,7 @@ class _SplashScreenState extends State<SplashScreen>
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
-  bool _isInitializing = true;
-  String _statusMessage = 'Initializing...';
+  late Animation<Offset> _slideAnimation;
 
   @override
   void initState() {
@@ -31,105 +30,70 @@ class _SplashScreenState extends State<SplashScreen>
     super.dispose();
   }
 
-  /// Setup fade and scale animations for logo
   void _setupAnimations() {
     _animationController = AnimationController(
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(milliseconds: 1800),
       vsync: this,
     );
 
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _animationController,
-        curve: const Interval(0.0, 0.6, curve: Curves.easeIn),
+        curve: const Interval(0.0, 0.6, curve: Curves.easeOut),
       ),
     );
 
-    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
+    _scaleAnimation = Tween<double>(begin: 0.7, end: 1.0).animate(
       CurvedAnimation(
         parent: _animationController,
-        curve: const Interval(0.0, 0.6, curve: Curves.easeOutBack),
+        curve: const Interval(0.0, 0.7, curve: Curves.easeOutBack),
       ),
     );
+
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.4), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _animationController,
+            curve: const Interval(0.3, 0.9, curve: Curves.easeOutCubic),
+          ),
+        );
 
     _animationController.forward();
   }
 
-  /// Initialize app data and determine navigation path
   Future<void> _initializeApp() async {
     try {
-      // Start animation
-      setState(() {
-        _statusMessage = 'Loading your moods...';
-      });
-
-      // Initialize SharedPreferences
       final prefs = await SharedPreferences.getInstance();
-
-      // Check for corrupted data
       final hasCorruptedData = await _checkDataIntegrity(prefs);
       if (hasCorruptedData) {
         await _handleCorruptedData(prefs);
         return;
       }
-
-      // Load theme preference
-      final isDarkMode = prefs.getBool('isDarkMode') ?? false;
-      setState(() {
-        _statusMessage = 'Applying theme...';
-      });
-
-      // Check if user has existing mood data
-      final hasMoodData = prefs.containsKey('moodHistory');
-      final isFirstLaunch = prefs.getBool('isFirstLaunch') ?? true;
-
-      // Wait for minimum splash duration
-      await Future.delayed(const Duration(milliseconds: 2000));
-
-      // Navigate based on user state
-      if (mounted) {
-        if (isFirstLaunch || !hasMoodData) {
-          // First time user - could show onboarding (for now go to home)
-          await prefs.setBool('isFirstLaunch', false);
-          Navigator.pushReplacementNamed(context, '/home-screen');
-        } else {
-          // Returning user with data
-          Navigator.pushReplacementNamed(context, '/home-screen');
-        }
-      }
+      await Future.delayed(const Duration(milliseconds: 2200));
+      if (mounted) Navigator.pushReplacementNamed(context, '/home-screen');
     } catch (e) {
-      // Handle initialization errors gracefully
       if (mounted) {
-        setState(() {
-          _statusMessage = 'Starting fresh...';
-        });
         await Future.delayed(const Duration(milliseconds: 1000));
         Navigator.pushReplacementNamed(context, '/home-screen');
       }
     }
   }
 
-  /// Check data integrity for corruption
   Future<bool> _checkDataIntegrity(SharedPreferences prefs) async {
     try {
-      // Try to read mood history
       final moodHistory = prefs.getString('moodHistory');
       if (moodHistory != null && moodHistory.isNotEmpty) {
-        // Basic validation - check if it's valid data structure
-        if (!moodHistory.startsWith('[') && !moodHistory.startsWith('{')) {
-          return true; // Corrupted
-        }
+        if (!moodHistory.startsWith('[') && !moodHistory.startsWith('{'))
+          return true;
       }
       return false;
     } catch (e) {
-      return true; // Error reading data = corrupted
+      return true;
     }
   }
 
-  /// Handle corrupted data with user dialog
   Future<void> _handleCorruptedData(SharedPreferences prefs) async {
     if (!mounted) return;
-
     final shouldReset = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -150,158 +114,204 @@ class _SplashScreenState extends State<SplashScreen>
         ],
       ),
     );
-
-    if (shouldReset == true) {
-      await prefs.clear();
-      await prefs.setBool('isFirstLaunch', false);
-      if (mounted) {
-        Navigator.pushReplacementNamed(context, '/home-screen');
-      }
-    } else {
-      if (mounted) {
-        Navigator.pushReplacementNamed(context, '/home-screen');
-      }
-    }
+    if (shouldReset == true) await prefs.clear();
+    if (mounted) Navigator.pushReplacementNamed(context, '/home-screen');
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final size = MediaQuery.of(context).size;
 
     return Scaffold(
       body: Container(
         width: size.width,
         height: size.height,
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: theme.brightness == Brightness.light
-                ? [
-                    theme.colorScheme.primary.withValues(alpha: 0.1),
-                    theme.colorScheme.secondary.withValues(alpha: 0.05),
-                    theme.colorScheme.surface,
-                  ]
-                : [
-                    theme.colorScheme.primary.withValues(alpha: 0.2),
-                    theme.colorScheme.secondary.withValues(alpha: 0.1),
-                    theme.scaffoldBackgroundColor,
-                  ],
+            colors: [Color(0xFF2196F3), Color(0xFF1565C0), Color(0xFF0D47A1)],
+            stops: [0.0, 0.5, 1.0],
           ),
         ),
-        child: SafeArea(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Spacer(flex: 2),
-
-              // Animated logo section
-              FadeTransition(
-                opacity: _fadeAnimation,
-                child: ScaleTransition(
-                  scale: _scaleAnimation,
-                  child: _buildLogoSection(theme),
+        child: Stack(
+          children: [
+            // Background decorative circles
+            Positioned(
+              top: -80,
+              right: -60,
+              child: Container(
+                width: 280,
+                height: 280,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.06),
                 ),
               ),
+            ),
+            Positioned(
+              bottom: -100,
+              left: -80,
+              child: Container(
+                width: 320,
+                height: 320,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.04),
+                ),
+              ),
+            ),
+            Positioned(
+              top: size.height * 0.3,
+              left: -40,
+              child: Container(
+                width: 160,
+                height: 160,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.05),
+                ),
+              ),
+            ),
 
-              const Spacer(flex: 2),
+            // Main content
+            SafeArea(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Spacer(flex: 2),
 
-              // Loading indicator and status
-              _buildLoadingSection(theme),
+                  // Logo section
+                  FadeTransition(
+                    opacity: _fadeAnimation,
+                    child: ScaleTransition(
+                      scale: _scaleAnimation,
+                      child: Column(
+                        children: [
+                          // App icon container
+                          Container(
+                            width: 110,
+                            height: 110,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(32),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.3),
+                                width: 1.5,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.2),
+                                  blurRadius: 30,
+                                  offset: const Offset(0, 10),
+                                ),
+                              ],
+                            ),
+                            child: const Center(
+                              child: Text('😊', style: TextStyle(fontSize: 52)),
+                            ),
+                          ),
+                          const SizedBox(height: 28),
 
-              const SizedBox(height: 48),
-            ],
-          ),
+                          // App name
+                          Text(
+                            'MoodTap',
+                            style: GoogleFonts.inter(
+                              fontSize: 36,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                              letterSpacing: -1.0,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            'Track your emotional journey',
+                            style: GoogleFonts.inter(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w400,
+                              color: Colors.white.withValues(alpha: 0.75),
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const Spacer(flex: 2),
+
+                  // Bottom section
+                  SlideTransition(
+                    position: _slideAnimation,
+                    child: FadeTransition(
+                      opacity: _fadeAnimation,
+                      child: Column(
+                        children: [
+                          // Mood emoji row
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: ['😢', '😕', '😐', '🙂', '😄'].map((
+                              emoji,
+                            ) {
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                ),
+                                child: Container(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.2,
+                                      ),
+                                    ),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      emoji,
+                                      style: const TextStyle(fontSize: 22),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 40),
+
+                          // Loading indicator
+                          SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white.withValues(alpha: 0.7),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Loading your moods...',
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              color: Colors.white.withValues(alpha: 0.6),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 48),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
-    );
-  }
-
-  /// Build logo section with app branding
-  Widget _buildLogoSection(ThemeData theme) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // Logo container with mood emoji
-        Container(
-          width: 120,
-          height: 120,
-          decoration: BoxDecoration(
-            color: theme.colorScheme.primary.withValues(alpha: 0.1),
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: theme.colorScheme.primary.withValues(alpha: 0.3),
-              width: 2,
-            ),
-          ),
-          child: ClipOval(
-            child: Image.asset(
-              'assets/images/ChatGPT_Image_Jan_31__2026__12_38_02_PM-1769881107516.png',
-              width: 100,
-              height: 100,
-              fit: BoxFit.cover,
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 24),
-
-        // App name
-        Text(
-          'MoodTap',
-          style: theme.textTheme.headlineLarge?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: theme.colorScheme.primary,
-            letterSpacing: 1.2,
-          ),
-        ),
-
-        const SizedBox(height: 8),
-
-        // Tagline
-        Text(
-          'Track your daily emotions',
-          style: theme.textTheme.bodyLarge?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-            letterSpacing: 0.5,
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// Build loading indicator section
-  Widget _buildLoadingSection(ThemeData theme) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // Loading indicator
-        SizedBox(
-          width: 32,
-          height: 32,
-          child: CircularProgressIndicator(
-            strokeWidth: 3,
-            valueColor: AlwaysStoppedAnimation<Color>(
-              theme.colorScheme.primary,
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 16),
-
-        // Status message
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 300),
-          child: Text(
-            _statusMessage,
-            key: ValueKey<String>(_statusMessage),
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

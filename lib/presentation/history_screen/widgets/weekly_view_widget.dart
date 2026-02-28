@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
-/// Widget displaying weekly mood history as bar chart and colored dots
+/// Weekly mood history with modern card-based design
 class WeeklyViewWidget extends StatelessWidget {
   final List<Map<String, dynamic>> weeklyMoods;
   final Function(Map<String, dynamic>) onMoodTap;
@@ -16,15 +17,15 @@ class WeeklyViewWidget extends StatelessWidget {
   Color _getMoodColor(int moodValue) {
     switch (moodValue) {
       case 1:
-        return const Color(0xFFEF4444); // Very sad - red
+        return const Color(0xFFEF5350);
       case 2:
-        return const Color(0xFFF59E0B); // Sad - orange
+        return const Color(0xFFFF9800);
       case 3:
-        return const Color(0xFFFBBF24); // Neutral - yellow
+        return const Color(0xFFFFC107);
       case 4:
-        return const Color(0xFF10B981); // Happy - light green
+        return const Color(0xFF66BB6A);
       case 5:
-        return const Color(0xFF059669); // Very happy - green
+        return const Color(0xFF2196F3);
       default:
         return Colors.grey;
     }
@@ -50,7 +51,7 @@ class WeeklyViewWidget extends StatelessWidget {
   String _getMoodLabel(int moodValue) {
     switch (moodValue) {
       case 1:
-        return 'Very sad';
+        return 'Very Sad';
       case 2:
         return 'Sad';
       case 3:
@@ -58,61 +59,32 @@ class WeeklyViewWidget extends StatelessWidget {
       case 4:
         return 'Happy';
       case 5:
-        return 'Very happy';
+        return 'Very Happy';
       default:
         return 'Unknown';
     }
   }
 
-  String _generateChartAccessibilityLabel() {
-    if (weeklyMoods.isEmpty) {
-      return 'Weekly mood chart. No mood entries for the past 7 days.';
-    }
-
-    final moodCounts = <int, int>{};
-    for (var mood in weeklyMoods) {
-      final value = mood['mood'] as int;
-      moodCounts[value] = (moodCounts[value] ?? 0) + 1;
-    }
-
-    final description = StringBuffer(
-      'Weekly mood chart with ${weeklyMoods.length} entries. ',
-    );
-    moodCounts.forEach((mood, count) {
-      description.write('$count ${_getMoodLabel(mood)} days. ');
-    });
-
-    return description.toString();
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-
-    // Calculate last 7 days including today
     final startDate = today.subtract(const Duration(days: 6));
 
-    // Create mood map for quick lookup
     final Map<String, int> moodMap = {};
     for (var mood in weeklyMoods) {
       try {
-        final dateStr = mood['date'] as String;
-        final moodValue = mood['mood'] as int;
-        moodMap[dateStr] = moodValue;
-      } catch (e) {
-        // Skip invalid entries
-      }
+        moodMap[mood['date'] as String] = mood['mood'] as int;
+      } catch (e) {}
     }
 
-    // Generate bar chart data for 7 days
     final List<BarChartGroupData> barGroups = [];
     for (int i = 0; i < 7; i++) {
       final date = startDate.add(Duration(days: i));
       final dateStr = DateFormat('yyyy-MM-dd').format(date);
       final moodValue = moodMap[dateStr] ?? 0;
-
       barGroups.add(
         BarChartGroupData(
           x: i,
@@ -121,10 +93,12 @@ class WeeklyViewWidget extends StatelessWidget {
               toY: moodValue > 0 ? moodValue.toDouble() : 0,
               color: moodValue > 0
                   ? _getMoodColor(moodValue)
-                  : theme.colorScheme.outline.withValues(alpha: 0.1),
-              width: 32,
+                  : (isDark
+                        ? const Color(0xFF2A2A2A)
+                        : const Color(0xFFEEF2F7)),
+              width: 28,
               borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(8),
+                top: Radius.circular(10),
               ),
             ),
           ],
@@ -132,253 +106,362 @@ class WeeklyViewWidget extends StatelessWidget {
       );
     }
 
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Summary stats row
+        Row(
+          children: [
+            _buildStatChip(
+              '${weeklyMoods.length}/7',
+              'Days logged',
+              const Color(0xFF2196F3),
+              isDark,
+            ),
+            const SizedBox(width: 12),
+            if (weeklyMoods.isNotEmpty)
+              _buildStatChip(
+                _getMoodEmoji(_getAverageMood()),
+                'Avg mood',
+                const Color(0xFF66BB6A),
+                isDark,
+              ),
+          ],
+        ),
+        const SizedBox(height: 20),
+
+        // Chart card
+        Container(
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: isDark
+                    ? Colors.black.withValues(alpha: 0.3)
+                    : const Color(0xFF2196F3).withValues(alpha: 0.06),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Last 7 Days',
+                      style: GoogleFonts.inter(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: isDark ? Colors.white : const Color(0xFF1A1A2E),
+                      ),
+                    ),
+                    Text(
+                      '${DateFormat('MMM d').format(startDate)} – ${DateFormat('MMM d').format(today)}',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                        color: isDark
+                            ? Colors.white54
+                            : const Color(0xFF9CA3AF),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                if (weeklyMoods.isNotEmpty)
+                  SizedBox(
+                    height: 200,
+                    child: Semantics(
+                      label:
+                          'Weekly mood bar chart with ${weeklyMoods.length} entries',
+                      child: BarChart(
+                        BarChartData(
+                          alignment: BarChartAlignment.spaceAround,
+                          maxY: 5,
+                          minY: 0,
+                          barTouchData: BarTouchData(
+                            enabled: true,
+                            touchTooltipData: BarTouchTooltipData(
+                              tooltipBgColor: isDark
+                                  ? const Color(0xFF2A2A2A)
+                                  : const Color(0xFF1A1A2E),
+                              getTooltipItem:
+                                  (group, groupIndex, rod, rodIndex) {
+                                    final date = startDate.add(
+                                      Duration(days: group.x.toInt()),
+                                    );
+                                    final moodValue = rod.toY.toInt();
+                                    if (moodValue == 0) return null;
+                                    return BarTooltipItem(
+                                      '${DateFormat('EEE').format(date)}\n',
+                                      GoogleFonts.inter(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 12,
+                                      ),
+                                      children: [
+                                        TextSpan(
+                                          text: _getMoodLabel(moodValue),
+                                          style: GoogleFonts.inter(
+                                            color: Colors.white70,
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  },
+                            ),
+                          ),
+                          titlesData: FlTitlesData(
+                            show: true,
+                            bottomTitles: AxisTitles(
+                              sideTitles: SideTitles(
+                                showTitles: true,
+                                getTitlesWidget: (value, meta) {
+                                  final date = startDate.add(
+                                    Duration(days: value.toInt()),
+                                  );
+                                  final isToday =
+                                      DateFormat('yyyy-MM-dd').format(date) ==
+                                      DateFormat('yyyy-MM-dd').format(now);
+                                  return Padding(
+                                    padding: const EdgeInsets.only(top: 8),
+                                    child: Text(
+                                      DateFormat(
+                                        'E',
+                                      ).format(date).substring(0, 1),
+                                      style: GoogleFonts.inter(
+                                        fontSize: 12,
+                                        fontWeight: isToday
+                                            ? FontWeight.w700
+                                            : FontWeight.w400,
+                                        color: isToday
+                                            ? const Color(0xFF2196F3)
+                                            : (isDark
+                                                  ? Colors.white54
+                                                  : const Color(0xFF9CA3AF)),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                            leftTitles: const AxisTitles(
+                              sideTitles: SideTitles(showTitles: false),
+                            ),
+                            topTitles: const AxisTitles(
+                              sideTitles: SideTitles(showTitles: false),
+                            ),
+                            rightTitles: const AxisTitles(
+                              sideTitles: SideTitles(showTitles: false),
+                            ),
+                          ),
+                          gridData: FlGridData(
+                            show: true,
+                            drawVerticalLine: false,
+                            horizontalInterval: 1,
+                            getDrawingHorizontalLine: (value) => FlLine(
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.05)
+                                  : const Color(0xFFF0F4F8),
+                              strokeWidth: 1,
+                            ),
+                          ),
+                          borderData: FlBorderData(show: false),
+                          barGroups: barGroups,
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  _buildEmptyState(isDark),
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 20),
+
+        // Daily entries list
+        if (weeklyMoods.isNotEmpty)
+          ..._buildDailyEntries(isDark, moodMap, startDate),
+      ],
+    );
+  }
+
+  int _getAverageMood() {
+    if (weeklyMoods.isEmpty) return 3;
+    final total = weeklyMoods.fold<int>(
+      0,
+      (sum, m) => sum + (m['mood'] as int),
+    );
+    return (total / weeklyMoods.length).round();
+  }
+
+  Widget _buildStatChip(String value, String label, Color color, bool isDark) {
     return Container(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            'Last 7 Days',
-            style: theme.textTheme.titleLarge?.copyWith(
+            value,
+            style: GoogleFonts.inter(
+              fontSize: 16,
               fontWeight: FontWeight.w700,
+              color: color,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(width: 6),
           Text(
-            '${DateFormat('MMM d').format(startDate)} - ${DateFormat('MMM d, yyyy').format(today)}',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+            label,
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              fontWeight: FontWeight.w400,
+              color: isDark ? Colors.white54 : const Color(0xFF6B7280),
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            '${weeklyMoods.length} mood entries',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 32),
-
-          // Bar Chart
-          if (weeklyMoods.isNotEmpty)
-            SizedBox(
-              height: 280,
-              child: Semantics(
-                label: _generateChartAccessibilityLabel(),
-                hint: 'Swipe to explore individual days',
-                child: BarChart(
-                  BarChartData(
-                    alignment: BarChartAlignment.spaceAround,
-                    maxY: 5,
-                    minY: 0,
-                    barTouchData: BarTouchData(
-                      enabled: true,
-                      touchTooltipData: BarTouchTooltipData(
-                        getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                          final date = startDate.add(
-                            Duration(days: group.x.toInt()),
-                          );
-                          final dateStr = DateFormat('EEE, MMM d').format(date);
-                          final moodValue = rod.toY.toInt();
-
-                          if (moodValue == 0) return null;
-
-                          return BarTooltipItem(
-                            '$dateStr\n',
-                            theme.textTheme.labelMedium!.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            children: [
-                              TextSpan(
-                                text: 'Mood: $moodValue',
-                                style: theme.textTheme.labelSmall!.copyWith(
-                                  color: Colors.white70,
-                                ),
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                    titlesData: FlTitlesData(
-                      show: true,
-                      bottomTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          getTitlesWidget: (value, meta) {
-                            final date = startDate.add(
-                              Duration(days: value.toInt()),
-                            );
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Text(
-                                DateFormat('E').format(date).substring(0, 1),
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      leftTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          reservedSize: 32,
-                          getTitlesWidget: (value, meta) {
-                            if (value == 0 || value == 5) {
-                              return Text(
-                                value.toInt().toString(),
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                              );
-                            }
-                            return const SizedBox.shrink();
-                          },
-                        ),
-                      ),
-                      topTitles: const AxisTitles(
-                        sideTitles: SideTitles(showTitles: false),
-                      ),
-                      rightTitles: const AxisTitles(
-                        sideTitles: SideTitles(showTitles: false),
-                      ),
-                    ),
-                    gridData: FlGridData(
-                      show: true,
-                      drawVerticalLine: false,
-                      horizontalInterval: 1,
-                      getDrawingHorizontalLine: (value) {
-                        return FlLine(
-                          color: theme.colorScheme.outline.withValues(
-                            alpha: 0.1,
-                          ),
-                          strokeWidth: 1,
-                        );
-                      },
-                    ),
-                    borderData: FlBorderData(show: false),
-                    barGroups: barGroups,
-                  ),
-                ),
-              ),
-            ),
-
-          const SizedBox(height: 32),
-
-          // Day-by-day dots view
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: List.generate(7, (index) {
-              final date = startDate.add(Duration(days: index));
-              final dateStr = DateFormat('yyyy-MM-dd').format(date);
-              final mood = weeklyMoods.firstWhere(
-                (m) => m['date'] == dateStr,
-                orElse: () => {},
-              );
-
-              final hasMood = mood.isNotEmpty;
-              final moodValue = hasMood ? mood['mood'] as int : 0;
-
-              return Expanded(
-                child: Semantics(
-                  label: hasMood
-                      ? '${DateFormat('EEEE, MMMM d').format(date)}, ${_getMoodLabel(moodValue)} mood'
-                      : '${DateFormat('EEEE, MMMM d').format(date)}, no mood recorded',
-                  button: hasMood,
-                  enabled: hasMood,
-                  child: GestureDetector(
-                    onTap: hasMood ? () => onMoodTap(mood) : null,
-                    child: Column(
-                      children: [
-                        Text(
-                          DateFormat('E').format(date).substring(0, 1),
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: hasMood
-                                ? Colors.transparent
-                                : theme.colorScheme.surface,
-                            border: Border.all(
-                              color: hasMood
-                                  ? _getMoodColor(moodValue)
-                                  : theme.colorScheme.outline.withValues(
-                                      alpha: 0.3,
-                                    ),
-                              width: 2,
-                            ),
-                            boxShadow: hasMood
-                                ? [
-                                    BoxShadow(
-                                      color: _getMoodColor(
-                                        moodValue,
-                                      ).withValues(alpha: 0.3),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ]
-                                : null,
-                          ),
-                          child: Center(
-                            child: Text(
-                              hasMood ? _getMoodEmoji(moodValue) : '',
-                              style: const TextStyle(fontSize: 24, height: 1.0),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          DateFormat('d').format(date),
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            }),
-          ),
-          const SizedBox(height: 32),
-          if (weeklyMoods.isEmpty)
-            Center(
-              child: Column(
-                children: [
-                  const SizedBox(height: 40),
-                  Text('📊', style: const TextStyle(fontSize: 64)),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No mood entries this week',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Start tracking your mood to see patterns',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant.withValues(
-                        alpha: 0.7,
-                      ),
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
         ],
+      ),
+    );
+  }
+
+  List<Widget> _buildDailyEntries(
+    bool isDark,
+    Map<String, int> moodMap,
+    DateTime startDate,
+  ) {
+    final widgets = <Widget>[];
+    widgets.add(
+      Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Text(
+          'Daily Breakdown',
+          style: GoogleFonts.inter(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: isDark ? Colors.white : const Color(0xFF1A1A2E),
+          ),
+        ),
+      ),
+    );
+
+    for (int i = 6; i >= 0; i--) {
+      final date = startDate.add(Duration(days: i));
+      final dateStr = DateFormat('yyyy-MM-dd').format(date);
+      final moodValue = moodMap[dateStr];
+      if (moodValue == null) continue;
+
+      final moodColor = _getMoodColor(moodValue);
+      widgets.add(
+        Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: isDark
+                    ? Colors.black.withValues(alpha: 0.2)
+                    : Colors.black.withValues(alpha: 0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 4,
+            ),
+            leading: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: moodColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Center(
+                child: Text(
+                  _getMoodEmoji(moodValue),
+                  style: const TextStyle(fontSize: 22),
+                ),
+              ),
+            ),
+            title: Text(
+              DateFormat('EEEE').format(date),
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : const Color(0xFF1A1A2E),
+              ),
+            ),
+            subtitle: Text(
+              DateFormat('MMM d').format(date),
+              style: GoogleFonts.inter(
+                fontSize: 12,
+                color: isDark ? Colors.white54 : const Color(0xFF9CA3AF),
+              ),
+            ),
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: moodColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                _getMoodLabel(moodValue),
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: moodColor,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    return widgets;
+  }
+
+  Widget _buildEmptyState(bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 32),
+      child: Center(
+        child: Column(
+          children: [
+            Text('📊', style: const TextStyle(fontSize: 48)),
+            const SizedBox(height: 12),
+            Text(
+              'No moods logged this week',
+              style: GoogleFonts.inter(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white70 : const Color(0xFF6B7280),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Start tracking your mood today!',
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                color: isDark ? Colors.white38 : const Color(0xFF9CA3AF),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

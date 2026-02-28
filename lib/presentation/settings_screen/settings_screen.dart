@@ -1,8 +1,7 @@
-
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sizer/sizer.dart';
 
 import '../../core/app_export.dart';
 import '../../routes/app_routes.dart';
@@ -10,10 +9,8 @@ import '../../services/notification_service.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/custom_bottom_bar.dart';
 import './widgets/reset_data_dialog_widget.dart';
-import './widgets/settings_section_widget.dart';
 
-/// Settings screen for MoodTap application
-/// Provides dark mode toggle and data reset functionality
+/// Settings screen with modern premium UI
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -22,7 +19,7 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  int _currentIndex = 2; // Settings tab index
+  int _currentIndex = 2;
   bool _isDarkMode = false;
   bool _isLoading = true;
   bool _notificationsEnabled = false;
@@ -35,7 +32,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadNotificationSettings();
   }
 
-  /// Load saved theme preference from SharedPreferences
   Future<void> _loadThemePreference() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -46,21 +42,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
         });
       }
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  /// Load notification settings
   Future<void> _loadNotificationSettings() async {
     try {
       final notificationService = NotificationService();
       final enabled = await notificationService.areNotificationsEnabled();
       final savedTime = await notificationService.getSavedNotificationTime();
-
       if (mounted) {
         setState(() {
           _notificationsEnabled = enabled;
@@ -72,22 +62,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
           }
         });
       }
-    } catch (e) {
-      // Silent fail
-    }
+    } catch (e) {}
   }
 
-  /// Show permission denied dialog with guidance
   Future<void> _showPermissionDeniedDialog() async {
     if (!mounted) return;
-
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Notification Permission Required'),
         content: const Text(
-          'MoodTap needs notification permission to send you daily reminders. '
-          'Please enable notifications in your device settings to use this feature.',
+          'MoodTap needs notification permission to send you daily reminders. Please enable notifications in your device settings.',
         ),
         actions: [
           TextButton(
@@ -106,140 +91,88 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// Toggle notifications on/off
   Future<void> _toggleNotifications(bool value) async {
     try {
       final notificationService = NotificationService();
-
       if (value) {
-        // Check if permission is permanently denied first
         final isPermanentlyDenied = await notificationService
             .isPermissionPermanentlyDenied();
-
         if (isPermanentlyDenied) {
-          // Show guidance dialog
           await _showPermissionDeniedDialog();
           return;
         }
-
-        // Request permissions
         final hasPermission = await notificationService.requestPermissions();
         if (!hasPermission) {
-          // Permission denied - show guidance
           await _showPermissionDeniedDialog();
           return;
         }
-
-        // Schedule notification
         await notificationService.scheduleDailyReminder(
           _notificationTime.hour,
           _notificationTime.minute,
         );
       } else {
-        // Cancel notification
         await notificationService.cancelDailyReminder();
       }
-
-      if (mounted) {
-        setState(() {
-          _notificationsEnabled = value;
-        });
-      }
-    } catch (e) {
-      // Silent fail
-    }
+      if (mounted) setState(() => _notificationsEnabled = value);
+    } catch (e) {}
   }
 
-  /// Show time picker for notification time
   Future<void> _selectNotificationTime() async {
     final picked = await showTimePicker(
       context: context,
       initialTime: _notificationTime,
     );
-
     if (picked != null && picked != _notificationTime) {
-      if (mounted) {
-        setState(() {
-          _notificationTime = picked;
-        });
-      }
-
-      // If notifications are enabled, reschedule with new time
+      if (mounted) setState(() => _notificationTime = picked);
       if (_notificationsEnabled) {
         try {
           await NotificationService().scheduleDailyReminder(
             picked.hour,
             picked.minute,
           );
-        } catch (e) {
-          // Silent fail
-        }
+        } catch (e) {}
       }
     }
   }
 
-  /// Toggle dark mode and save preference
   Future<void> _toggleDarkMode(bool value) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('isDarkMode', value);
-
       if (mounted) {
-        setState(() {
-          _isDarkMode = value;
-        });
-
-        // Update theme immediately by accessing root MyApp state
+        setState(() => _isDarkMode = value);
         final myAppState = context
             .findRootAncestorStateOfType<State<StatefulWidget>>();
         if (myAppState != null) {
-          // Access the updateThemeMode method from _MyAppState
           final dynamic appState = myAppState;
           if (appState.runtimeType.toString() == '_MyAppState') {
             try {
               (appState as dynamic).updateThemeMode(value);
-            } catch (e) {
-              // Silent fail - theme will update on next app restart
-            }
+            } catch (e) {}
           }
         }
       }
-    } catch (e) {
-      // Silent fail - theme preference saved but visual update failed
-    }
+    } catch (e) {}
   }
 
-  /// Show confirmation dialog before resetting data
   Future<void> _showResetDialog() async {
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => const ResetDataDialogWidget(),
     );
-
-    if (result == true && mounted) {
-      await _resetAllData();
-    }
+    if (result == true && mounted) await _resetAllData();
   }
 
-  /// Reset all mood data and navigate to splash screen
   Future<void> _resetAllData() async {
     try {
-      // Clear Supabase data first
       try {
         await SupabaseService.instance.deleteAllMoods();
-      } catch (e) {
-        debugPrint('Failed to clear Supabase data: $e');
-      }
-
-      // Clear local SharedPreferences
+      } catch (e) {}
       final prefs = await SharedPreferences.getInstance();
-      // Clear all mood-related data but keep theme preference
       final isDarkMode = prefs.getBool('isDarkMode') ?? false;
       await prefs.clear();
       await prefs.setBool('isDarkMode', isDarkMode);
-
       if (mounted) {
-        // Navigate to splash screen to restart app flow
         Navigator.pushNamedAndRemoveUntil(
           context,
           AppRoutes.splash,
@@ -251,308 +184,405 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  /// Export mood data as CSV
-  Future<void> _exportData() async {
-    try {
-      final moods = await SupabaseService.instance.getAllMoods();
-
-      if (moods.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No mood data to export'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-        return;
-      }
-
-      // Create CSV content
-      final csvContent = StringBuffer();
-      csvContent.writeln('Date,Mood,Mood Label');
-
-      for (final mood in moods) {
-        final date = mood['date'] as String;
-        final moodValue = mood['mood'] as int;
-        final moodLabel = _getMoodLabel(moodValue);
-        csvContent.writeln('$date,$moodValue,$moodLabel');
-      }
-
-      // Show success message with data preview
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Data Export Ready'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Your mood data (${moods.length} entries) is ready to export.',
-                  ),
-                  SizedBox(height: 2.h),
-                  Text(
-                    'Preview:',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13.sp,
-                    ),
-                  ),
-                  SizedBox(height: 1.h),
-                  Container(
-                    padding: EdgeInsets.all(2.w),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).cardColor,
-                      borderRadius: BorderRadius.circular(8.0),
-                    ),
-                    child: Text(
-                      csvContent.toString().split('\n').take(5).join('\n'),
-                      style: TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 11.sp,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Close'),
-              ),
-            ],
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to export data: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  String _getMoodLabel(int mood) {
-    switch (mood) {
-      case 1:
-        return 'Very Bad';
-      case 2:
-        return 'Bad';
-      case 3:
-        return 'Okay';
-      case 4:
-        return 'Good';
-      case 5:
-        return 'Great';
-      default:
-        return 'Unknown';
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Settings'),
-        automaticallyImplyLeading: false,
-        elevation: 0,
-      ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(4.w),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Appearance Section
-            SettingsSectionWidget(
-              title: 'Appearance',
-              children: [
-                ListTile(
-                  leading: Icon(
-                    _isDarkMode ? Icons.dark_mode : Icons.light_mode,
-                    color: Theme.of(context).primaryColor,
-                  ),
-                  title: const Text('Dark Mode'),
-                  subtitle: Text(
-                    _isDarkMode ? 'Enabled' : 'Disabled',
-                    style: TextStyle(fontSize: 12.sp, color: Colors.grey),
-                  ),
-                  trailing: Switch(
-                    value: _isDarkMode,
-                    onChanged: _toggleDarkMode,
+      backgroundColor: isDark
+          ? const Color(0xFF121212)
+          : const Color(0xFFF5F7FA),
+      body: NestedScrollView(
+        headerSliverBuilder: (context, innerBoxIsScrolled) => [
+          SliverAppBar(
+            expandedHeight: 140,
+            floating: false,
+            pinned: true,
+            elevation: 0,
+            backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+            flexibleSpace: FlexibleSpaceBar(
+              background: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: isDark
+                        ? [const Color(0xFF1565C0), const Color(0xFF0D47A1)]
+                        : [const Color(0xFF2196F3), const Color(0xFF1565C0)],
                   ),
                 ),
-              ],
-            ),
-            SizedBox(height: 2.h),
-
-            // Notifications Section
-            SettingsSectionWidget(
-              title: 'Notifications',
-              children: [
-                ListTile(
-                  leading: Icon(
-                    Icons.notifications,
-                    color: Theme.of(context).primaryColor,
-                  ),
-                  title: const Text('Daily Reminder'),
-                  subtitle: Text(
-                    _notificationsEnabled
-                        ? 'Enabled at ${_notificationTime.format(context)}'
-                        : 'Disabled',
-                    style: TextStyle(fontSize: 12.sp, color: Colors.grey),
-                  ),
-                  trailing: Switch(
-                    value: _notificationsEnabled,
-                    onChanged: _toggleNotifications,
-                  ),
-                ),
-                if (_notificationsEnabled)
-                  ListTile(
-                    leading: Icon(
-                      Icons.access_time,
-                      color: Theme.of(context).primaryColor,
-                    ),
-                    title: const Text('Reminder Time'),
-                    subtitle: Text(
-                      _notificationTime.format(context),
-                      style: TextStyle(fontSize: 12.sp, color: Colors.grey),
-                    ),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: _selectNotificationTime,
-                  ),
-              ],
-            ),
-            SizedBox(height: 2.h),
-
-            // Data Management Section
-            SettingsSectionWidget(
-              title: 'Data Management',
-              children: [
-                ListTile(
-                  leading: Icon(
-                    Icons.download,
-                    color: Theme.of(context).primaryColor,
-                  ),
-                  title: const Text('Export Data'),
-                  subtitle: Text(
-                    'Download your mood history as CSV',
-                    style: TextStyle(fontSize: 12.sp, color: Colors.grey),
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: _exportData,
-                ),
-                ListTile(
-                  leading: const Icon(Icons.delete_forever, color: Colors.red),
-                  title: const Text(
-                    'Reset All Data',
-                    style: TextStyle(color: Colors.red),
-                  ),
-                  subtitle: Text(
-                    'Permanently delete all mood entries',
-                    style: TextStyle(fontSize: 12.sp, color: Colors.grey),
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: _showResetDialog,
-                ),
-              ],
-            ),
-            SizedBox(height: 2.h),
-
-            // Legal Section
-            SettingsSectionWidget(
-              title: 'Legal',
-              children: [
-                ListTile(
-                  leading: Icon(
-                    Icons.privacy_tip,
-                    color: Theme.of(context).primaryColor,
-                  ),
-                  title: const Text('Privacy Policy'),
-                  subtitle: Text(
-                    'How we handle your data',
-                    style: TextStyle(fontSize: 12.sp, color: Colors.grey),
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.pushNamed(context, AppRoutes.privacyPolicy);
-                  },
-                ),
-                ListTile(
-                  leading: Icon(
-                    Icons.description,
-                    color: Theme.of(context).primaryColor,
-                  ),
-                  title: const Text('Terms of Service'),
-                  subtitle: Text(
-                    'Terms and conditions',
-                    style: TextStyle(fontSize: 12.sp, color: Colors.grey),
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.pushNamed(context, AppRoutes.termsOfService);
-                  },
-                ),
-              ],
-            ),
-            SizedBox(height: 2.h),
-
-            // App Info
-            Center(
-              child: Column(
-                children: [
-                  Text(
-                    'MoodTap',
-                    style: TextStyle(
-                      fontSize: 14.sp,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey,
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Settings',
+                          style: GoogleFonts.inter(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Customize your experience',
+                          style: GoogleFonts.inter(
+                            fontSize: 14,
+                            color: Colors.white.withValues(alpha: 0.75),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  SizedBox(height: 0.5.h),
-                  Text(
-                    'Version 1.0.0',
-                    style: TextStyle(fontSize: 12.sp, color: Colors.grey),
-                  ),
-                ],
+                ),
               ),
             ),
-            SizedBox(height: 2.h),
-          ],
-        ),
+            title: Text(
+              'Settings',
+              style: GoogleFonts.inter(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: isDark ? Colors.white : const Color(0xFF1A1A2E),
+              ),
+            ),
+          ),
+        ],
+        body: _isLoading
+            ? Center(
+                child: CircularProgressIndicator(
+                  color: theme.colorScheme.primary,
+                ),
+              )
+            : SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildSectionLabel('Appearance', isDark),
+                    const SizedBox(height: 10),
+                    _buildSettingsCard(
+                      isDark,
+                      children: [
+                        _buildSwitchTile(
+                          icon: Icons.dark_mode_rounded,
+                          iconColor: const Color(0xFF7C3AED),
+                          title: 'Dark Mode',
+                          subtitle: 'Switch to dark theme',
+                          value: _isDarkMode,
+                          onChanged: _toggleDarkMode,
+                          isDark: isDark,
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 24),
+                    _buildSectionLabel('Notifications', isDark),
+                    const SizedBox(height: 10),
+                    _buildSettingsCard(
+                      isDark,
+                      children: [
+                        _buildSwitchTile(
+                          icon: Icons.notifications_rounded,
+                          iconColor: const Color(0xFF2196F3),
+                          title: 'Daily Reminders',
+                          subtitle: 'Get reminded to log your mood',
+                          value: _notificationsEnabled,
+                          onChanged: _toggleNotifications,
+                          isDark: isDark,
+                        ),
+                        if (_notificationsEnabled)
+                          ..._buildDividerAndTile(
+                            _buildTapTile(
+                              icon: Icons.access_time_rounded,
+                              iconColor: const Color(0xFF00BCD4),
+                              title: 'Reminder Time',
+                              subtitle: _notificationTime.format(context),
+                              onTap: _selectNotificationTime,
+                              isDark: isDark,
+                            ),
+                            isDark,
+                          ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 24),
+                    _buildSectionLabel('Data & Privacy', isDark),
+                    const SizedBox(height: 10),
+                    _buildSettingsCard(
+                      isDark,
+                      children: [
+                        _buildTapTile(
+                          icon: Icons.privacy_tip_rounded,
+                          iconColor: const Color(0xFF4CAF50),
+                          title: 'Privacy Policy',
+                          subtitle: 'How we handle your data',
+                          onTap: () => Navigator.pushNamed(
+                            context,
+                            AppRoutes.privacyPolicy,
+                          ),
+                          isDark: isDark,
+                          showArrow: true,
+                        ),
+                        ..._buildDividerAndTile(
+                          _buildTapTile(
+                            icon: Icons.description_rounded,
+                            iconColor: const Color(0xFF2196F3),
+                            title: 'Terms of Service',
+                            subtitle: 'Our terms and conditions',
+                            onTap: () => Navigator.pushNamed(
+                              context,
+                              AppRoutes.termsOfService,
+                            ),
+                            isDark: isDark,
+                            showArrow: true,
+                          ),
+                          isDark,
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 24),
+                    _buildSectionLabel('Danger Zone', isDark),
+                    const SizedBox(height: 10),
+                    _buildSettingsCard(
+                      isDark,
+                      children: [
+                        _buildTapTile(
+                          icon: Icons.delete_forever_rounded,
+                          iconColor: const Color(0xFFEF5350),
+                          title: 'Reset All Data',
+                          subtitle: 'Permanently delete all mood entries',
+                          onTap: _showResetDialog,
+                          isDark: isDark,
+                          titleColor: const Color(0xFFEF5350),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 32),
+                    _buildAppVersion(isDark),
+                    const SizedBox(height: 20),
+                  ],
+                ),
+              ),
       ),
       bottomNavigationBar: CustomBottomBar(
         currentIndex: _currentIndex,
-        onTap: (index) {
-          if (index == _currentIndex) return;
+        onTap: (index) => setState(() => _currentIndex = index),
+      ),
+    );
+  }
 
-          setState(() {
-            _currentIndex = index;
-          });
+  Widget _buildSectionLabel(String label, bool isDark) {
+    return Text(
+      label.toUpperCase(),
+      style: GoogleFonts.inter(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        color: isDark ? Colors.white38 : const Color(0xFF9CA3AF),
+        letterSpacing: 1.2,
+      ),
+    );
+  }
 
-          switch (index) {
-            case 0:
-              Navigator.pushReplacementNamed(context, AppRoutes.home);
-              break;
-            case 1:
-              Navigator.pushReplacementNamed(context, AppRoutes.history);
-              break;
-            case 2:
-              // Already on settings
-              break;
-          }
-        },
+  Widget _buildSettingsCard(bool isDark, {required List<Widget> children}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: isDark
+                ? Colors.black.withValues(alpha: 0.3)
+                : Colors.black.withValues(alpha: 0.04),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(children: children),
+    );
+  }
+
+  Widget _buildSwitchTile({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String subtitle,
+    required bool value,
+    required Function(bool) onChanged,
+    required bool isDark,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: iconColor, size: 20),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.inter(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white : const Color(0xFF1A1A2E),
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: GoogleFonts.inter(
+                    fontSize: 12,
+                    color: isDark ? Colors.white38 : const Color(0xFF9CA3AF),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: value,
+            onChanged: onChanged,
+            activeColor: const Color(0xFF2196F3),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTapTile({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    required bool isDark,
+    bool showArrow = false,
+    Color? titleColor,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: iconColor, size: 20),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.inter(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color:
+                          titleColor ??
+                          (isDark ? Colors.white : const Color(0xFF1A1A2E)),
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.inter(
+                      fontSize: 12,
+                      color: isDark ? Colors.white38 : const Color(0xFF9CA3AF),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              showArrow
+                  ? Icons.arrow_forward_ios_rounded
+                  : Icons.chevron_right_rounded,
+              color: isDark ? Colors.white38 : const Color(0xFFD1D5DB),
+              size: showArrow ? 14 : 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildDividerAndTile(Widget tile, bool isDark) {
+    return [
+      Divider(
+        height: 1,
+        indent: 70,
+        endIndent: 16,
+        color: isDark ? const Color(0xFF2A2A2A) : const Color(0xFFF0F4F8),
+      ),
+      tile,
+    ];
+  }
+
+  Widget _buildAppVersion(bool isDark) {
+    return Center(
+      child: Column(
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF2196F3), Color(0xFF1565C0)],
+              ),
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF2196F3).withValues(alpha: 0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: const Center(
+              child: Text('😊', style: TextStyle(fontSize: 26)),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'MoodTap',
+            style: GoogleFonts.inter(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: isDark ? Colors.white : const Color(0xFF1A1A2E),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Version 1.0.0',
+            style: GoogleFonts.inter(
+              fontSize: 12,
+              color: isDark ? Colors.white38 : const Color(0xFF9CA3AF),
+            ),
+          ),
+        ],
       ),
     );
   }
